@@ -1,0 +1,25 @@
+# Ambientes Virtuais
+.venv/
+env/
+venv/
+
+# Variáveis de Ambiente (SEGURANÇA CRÍTICA)
+.env
+
+# Bytecode Python
+__pycache__/
+*.pyc
+
+# Arquivos gerados pelo Robô
+*.png
+screenshots/
+test-results/
+
+# Logs e Dados locais (se criarmos no futuro)
+*.log
+*.sqlite3
+dados_faltas.json
+
+# IDEs
+.vscode/
+.idea/
