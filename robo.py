@@ -17,42 +17,34 @@ def extrair_numero(texto_pagina, padrao):
         return int(match.group(1))
     return 0
 
-# --- FUNÇÃO DE RETORNO ATUALIZADA (LÓGICA DA CASINHA) ---
 def voltar_para_portal(page):
     print("   > Voltando para o Menu Principal...")
     try:
-        # 1. Tenta clicar no botão "Casinha" (Menu Discente)
-        # O SIGAA costuma usar title="Menu Discente" ou "Principal" na imagem ou no link da casa
-        # Procuramos um link (a) ou imagem (img) que tenha 'Menu Discente' ou 'Principal' no título
-        # Também procuramos genericamente por uma imagem que tenha 'home' no nome do arquivo
-        
-        botao_casa = page.locator("""
-            a[title='Menu Discente'], 
-            img[title='Menu Discente'], 
-            a[title='Principal'], 
-            img[src*='home.png'],
-            img[src*='icon-home']
-        """).first
+        # Tenta clicar na casinha (ícone home)
+        # Seletores para imagem ou link com title 'Menu Discente'
+        botao_casa = page.locator("a[title='Menu Discente'], img[title='Menu Discente'], img[src*='home.png']").first
         
         if botao_casa.is_visible():
-            print("     -> Clicando no ícone da 'Casinha'...")
             botao_casa.click()
-        
         else:
-            # 2. Fallback: Se a casinha não for achada, tenta o texto "Portal do Discente"
-            print("     -> Casinha não visível. Tentando texto 'Portal do Discente'...")
-            page.click("text=Portal do Discente")
+            # Fallback para texto
+            print("     -> Casinha não visível. Tentando link de texto...")
+            if page.locator("text=Portal do Discente").is_visible():
+                page.click("text=Portal do Discente")
+            else:
+                # Último recurso: URL direta
+                print("     -> Botões não encontrados. Forçando URL...")
+                page.goto("https://sigaa.unb.br/sigaa/portais/discente/discente.jsf")
             
         page.wait_for_load_state("networkidle")
 
-        # Verificação de segurança: Se ainda estiver preso na turma (vendo o menu lateral), força URL
+        # Se ainda estiver preso no menu da turma, força a URL
         if page.locator("text=Menu Turma Virtual").is_visible():
-            print("     -> Ainda na turma. Forçando navegação direta...")
             page.goto("https://sigaa.unb.br/sigaa/portais/discente/discente.jsf")
             page.wait_for_load_state("networkidle")
             
     except Exception as e:
-        print(f"   > Erro ao voltar: {e}. Tentando URL direta de emergência...")
+        print(f"   > Erro crítico ao voltar: {e}. Indo para URL direta...")
         page.goto("https://sigaa.unb.br/sigaa/portais/discente/discente.jsf")
         page.wait_for_load_state("networkidle")
 
@@ -60,7 +52,7 @@ def voltar_para_portal(page):
 def rodar_robo():
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=False) 
-        # Viewport maior para garantir que o menu superior apareça
+        # Mantemos viewport grande
         context = browser.new_context(viewport={'width': 1366, 'height': 768})
         page = context.new_page()
 
@@ -91,7 +83,7 @@ def rodar_robo():
         print("Buscando lista de matérias...")
         links_materias = page.locator("td.descricao a, .lista-turmas a").all()
         nomes_materias = [link.inner_text().strip() for link in links_materias if link.inner_text().strip()]
-        nomes_materias = [n for n in nomes_materias if len(n) > 5] # Filtra nomes muito curtos
+        nomes_materias = [n for n in nomes_materias if len(n) > 5] 
         
         print(f"Matérias encontradas: {nomes_materias}")
         
@@ -102,8 +94,7 @@ def rodar_robo():
             print(f"\n--------------------------------")
             print(f"Processando: {materia}")
             
-            # Antes de entrar, garante que está na home
-            # (Na primeira vez já está, mas nas próximas precisa voltar)
+            # Garante Home
             if "portais/discente" not in page.url and "turma/lista.jsf" not in page.url:
                 voltar_para_portal(page)
 
@@ -112,21 +103,36 @@ def rodar_robo():
                 page.click(f"text={materia}")
                 page.wait_for_load_state("networkidle")
 
-                # Navega até Frequência
-                print("   > Acessando Frequência...")
+                # --- MUDANÇA AQUI: CLIQUE ROBUSTO NO MENU ---
+                print("   > Acessando menu Estudantes...")
                 
-                # Tenta clicar em "Estudantes" (Vários seletores para garantir)
+                # Usamos a classe específica que apareceu no seu erro
+                menu_estudantes = page.locator(".itemMenuHeaderAlunos, text=Estudantes").first
+                
+                # 1. Garante que está na tela (scroll)
+                menu_estudantes.scroll_into_view_if_needed()
+                
+                # 2. Tenta clicar (com force=True para ignorar erro de 'not visible')
                 try:
-                    page.locator("div#menuForm >> text=Estudantes").click()
+                    menu_estudantes.click(timeout=2000)
                 except:
-                    # Tenta clicar apenas no texto se o div falhar
-                    page.locator("text=Estudantes").first.click()
+                    print("     -> Clique normal falhou. Usando FORCE CLICK...")
+                    menu_estudantes.click(force=True)
                 
+                # Pequena pausa para o menu expandir
                 page.wait_for_timeout(500)
-                page.click("text=Frequência")
+                
+                # Clica em Frequência (também com force, por garantia)
+                link_freq = page.locator("text=Frequência").first
+                try:
+                    link_freq.click(timeout=2000)
+                except:
+                    print("     -> Clique Frequência falhou. Usando FORCE CLICK...")
+                    link_freq.click(force=True)
+                    
                 page.wait_for_load_state("networkidle")
                 
-                # Extrai dados
+                # --- EXTRAÇÃO ---
                 conteudo = page.content()
 
                 if "A frequência ainda não foi lançada" in conteudo:
@@ -154,13 +160,11 @@ def rodar_robo():
                         "porcentagem": round(freq_percent, 2)
                     })
 
-                # IMPORTANTE: Voltar para o portal ao final do processamento desta matéria
                 voltar_para_portal(page)
 
             except Exception as e:
-                print(f"   > ERRO em {materia}: {e}")
+                print(f"   > ERRO CRÍTICO em {materia}: {e}")
                 page.screenshot(path=f"erro_{materia[:5].strip()}.png")
-                # Tenta recuperar voltando para o portal antes do próximo loop
                 voltar_para_portal(page)
 
         # --- 5. SALVAR ---
