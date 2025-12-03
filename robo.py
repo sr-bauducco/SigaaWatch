@@ -1,7 +1,7 @@
 import os
 import re
 import json
-from time import sleep
+from time import sleep # Importante: Importando o sleep
 from playwright.sync_api import sync_playwright
 from dotenv import load_dotenv
 
@@ -10,6 +10,17 @@ load_dotenv()
 USER = os.getenv("SIGAA_USER")
 PASSWORD = os.getenv("SIGAA_PASS")
 URL_LOGIN = os.getenv("SIGAA_URL")
+URL_PORTAL = "https://sigaa.unb.br/sigaa/portais/discente/discente.jsf"
+
+# --- FUNÇÃO DE CLIQUE VIA JS (Mantida pois funcionou para burlar invisibilidade) ---
+def js_click(page, locator_string):
+    try:
+        locator = page.locator(locator_string).first
+        locator.evaluate("element => element.click()")
+        return True
+    except Exception as e:
+        print(f"     [JS Click Falhou] {locator_string}")
+        return False
 
 def extrair_numero(texto_pagina, padrao):
     match = re.search(padrao, texto_pagina)
@@ -17,48 +28,15 @@ def extrair_numero(texto_pagina, padrao):
         return int(match.group(1))
     return 0
 
-def voltar_para_portal(page):
-    print("   > Voltando para o Menu Principal...")
-    try:
-        # Tenta clicar na casinha (ícone home)
-        # Seletores para imagem ou link com title 'Menu Discente'
-        botao_casa = page.locator("a[title='Menu Discente'], img[title='Menu Discente'], img[src*='home.png']").first
-        
-        if botao_casa.is_visible():
-            botao_casa.click()
-        else:
-            # Fallback para texto
-            print("     -> Casinha não visível. Tentando link de texto...")
-            if page.locator("text=Portal do Discente").is_visible():
-                page.click("text=Portal do Discente")
-            else:
-                # Último recurso: URL direta
-                print("     -> Botões não encontrados. Forçando URL...")
-                page.goto("https://sigaa.unb.br/sigaa/portais/discente/discente.jsf")
-            
-        page.wait_for_load_state("networkidle")
-
-        # Se ainda estiver preso no menu da turma, força a URL
-        if page.locator("text=Menu Turma Virtual").is_visible():
-            page.goto("https://sigaa.unb.br/sigaa/portais/discente/discente.jsf")
-            page.wait_for_load_state("networkidle")
-            
-    except Exception as e:
-        print(f"   > Erro crítico ao voltar: {e}. Indo para URL direta...")
-        page.goto("https://sigaa.unb.br/sigaa/portais/discente/discente.jsf")
-        page.wait_for_load_state("networkidle")
-
-
 def rodar_robo():
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=False) 
-        # Mantemos viewport grande
         context = browser.new_context(viewport={'width': 1366, 'height': 768})
         page = context.new_page()
 
         print("--- Iniciando SigaaWatch ---")
         
-        # --- 1. LOGIN ---
+        # 1. LOGIN
         page.goto(URL_LOGIN)
         try:
             page.wait_for_selector("#username", timeout=5000)
@@ -73,105 +51,130 @@ def rodar_robo():
         page.wait_for_load_state("networkidle")
         print("Login realizado.")
 
-        # --- 2. COOKIES ---
+        # 2. COOKIES
         try:
             if page.locator("text=Ciente").is_visible():
                 page.click("text=Ciente")
         except: pass
 
-        # --- 3. MAPEANDO MATÉRIAS ---
+        # 3. LISTAR MATÉRIAS
         print("Buscando lista de matérias...")
+        if "portais/discente" not in page.url:
+            page.goto(URL_PORTAL)
+            page.wait_for_load_state("networkidle")
+
         links_materias = page.locator("td.descricao a, .lista-turmas a").all()
         nomes_materias = [link.inner_text().strip() for link in links_materias if link.inner_text().strip()]
         nomes_materias = [n for n in nomes_materias if len(n) > 5] 
-        
         print(f"Matérias encontradas: {nomes_materias}")
         
         dados_finais = []
 
-        # --- 4. LOOP DE EXTRAÇÃO ---
+        # 4. LOOP
         for materia in nomes_materias:
             print(f"\n--------------------------------")
             print(f"Processando: {materia}")
             
-            # Garante Home
-            if "portais/discente" not in page.url and "turma/lista.jsf" not in page.url:
-                voltar_para_portal(page)
+            # Reset Navegação
+            page.goto(URL_PORTAL)
+            page.wait_for_load_state("networkidle")
 
             try:
-                # Clica na matéria
+                # Entrar na Turma
                 page.click(f"text={materia}")
-                page.wait_for_load_state("networkidle")
-
-                # --- MUDANÇA AQUI: CLIQUE ROBUSTO NO MENU ---
-                print("   > Acessando menu Estudantes...")
+                page.wait_for_selector("text=Menu Turma Virtual", timeout=10000)
                 
-                # Usamos a classe específica que apareceu no seu erro
-                menu_estudantes = page.locator(".itemMenuHeaderAlunos, text=Estudantes").first
+                # Menu Estudantes
+                print("   > Abrindo menu Estudantes...")
+                sucesso = js_click(page, ".itemMenuHeaderAlunos")
+                if not sucesso: js_click(page, "text=Estudantes")
                 
-                # 1. Garante que está na tela (scroll)
-                menu_estudantes.scroll_into_view_if_needed()
+                sleep(1) # Pausa pequena para animação do menu
                 
-                # 2. Tenta clicar (com force=True para ignorar erro de 'not visible')
-                try:
-                    menu_estudantes.click(timeout=2000)
-                except:
-                    print("     -> Clique normal falhou. Usando FORCE CLICK...")
-                    menu_estudantes.click(force=True)
+                print("   > Clicando em Frequência...")
+                js_click(page, "text=Frequência")
                 
-                # Pequena pausa para o menu expandir
-                page.wait_for_timeout(500)
-                
-                # Clica em Frequência (também com force, por garantia)
-                link_freq = page.locator("text=Frequência").first
-                try:
-                    link_freq.click(timeout=2000)
-                except:
-                    print("     -> Clique Frequência falhou. Usando FORCE CLICK...")
-                    link_freq.click(force=True)
-                    
-                page.wait_for_load_state("networkidle")
+                # --- AQUI ESTÁ A CORREÇÃO PRINCIPAL ---
+                # Esperamos o navegador terminar a transição antes de ler
+                print("   > Aguardando carregamento da tabela...")
+                page.wait_for_load_state("domcontentloaded") 
+                sleep(3) # Pausa forçada de 3 segundos para garantir que o HTML estabilizou
                 
                 # --- EXTRAÇÃO ---
                 conteudo = page.content()
-
+                status_materia = "Ativo"
+                mensagem_materia = "Monitoramento normal"
+                
+                # CASO 1: Aviso Vermelho (Não faz chamada)
                 if "A frequência ainda não foi lançada" in conteudo:
-                    print(f"   > Status: Frequência não lançada.")
-                    dados_finais.append({
-                        "materia": materia,
-                        "status_frequencia": "Indisponível",
-                        "mensagem": "Professor não lança chamada",
-                        "faltas": 0, "presencas": 0, "total_aulas": 0, "porcentagem": 100
-                    })
-                else:
-                    presencas = extrair_numero(conteudo, r"Presenças Registradas:\s*(\d+)")
-                    total_aulas = extrair_numero(conteudo, r"Número de Aulas com Registro.*:\s*(\d+)")
-                    faltas = total_aulas - presencas
-                    freq_percent = (presencas / total_aulas * 100) if total_aulas > 0 else 100.0
-                    
-                    print(f"   > Faltas: {faltas} | Frequência: {freq_percent:.1f}%")
-                    dados_finais.append({
-                        "materia": materia,
-                        "status_frequencia": "Ativo",
-                        "mensagem": "Monitoramento normal",
-                        "faltas": faltas,
-                        "presencas": presencas,
-                        "total_aulas": total_aulas,
-                        "porcentagem": round(freq_percent, 2)
-                    })
+                    print(f"   > Caso: Aviso Vermelho detectado.")
+                    status_materia = "Indisponível"
+                    mensagem_materia = "Não fazem chamada"
+                    faltas_somadas = 0
+                    presencas = 0
+                    total_aulas_reg = 0
+                    freq_percent = 100.0
 
-                voltar_para_portal(page)
+                else:
+                    # CASO 2 e 3: Tabela Existe
+                    print("   > Analisando tabela...")
+                    linhas = page.locator("table tbody tr").all()
+                    
+                    faltas_somadas = 0
+                    tem_registro_real = False # Se achou "Falta" ou "Presente"
+                    
+                    for linha in linhas:
+                        texto = linha.inner_text()
+                        
+                        if "Falta" in texto:
+                            match = re.search(r"(\d+)\s*Falta", texto)
+                            if match:
+                                faltas_somadas += int(match.group(1))
+                                tem_registro_real = True
+                        elif "Presente" in texto:
+                            tem_registro_real = True
+
+                    # Dados oficiais do rodapé
+                    presencas = extrair_numero(conteudo, r"Presenças Registradas:\s*(\d+)")
+                    total_aulas_reg = extrair_numero(conteudo, r"Número de Aulas com Registro.*:\s*(\d+)")
+                    
+                    # Lógica Sistemas de Info (Tabela vazia/só placeholders)
+                    if not tem_registro_real and presencas == 0:
+                        print(f"   > Caso: Tabela vazia.")
+                        status_materia = "Pendente"
+                        mensagem_materia = "O professor ainda não lançou a chamada"
+                        freq_percent = 100.0
+                    else:
+                        # Lógica Normal (Linguagens)
+                        if total_aulas_reg > 0:
+                            freq_percent = (presencas / total_aulas_reg) * 100
+                        else:
+                            freq_percent = 100.0
+                        
+                        mensagem_materia = "Chamada ativa"
+
+                    print(f"   > Resultado: {mensagem_materia} | Faltas: {faltas_somadas}")
+
+                # Salvar
+                dados_finais.append({
+                    "materia": materia,
+                    "status": status_materia,
+                    "mensagem": mensagem_materia,
+                    "faltas": faltas_somadas,
+                    "presencas": presencas,
+                    "total": total_aulas_reg,
+                    "porcentagem": round(freq_percent, 2)
+                })
 
             except Exception as e:
-                print(f"   > ERRO CRÍTICO em {materia}: {e}")
-                page.screenshot(path=f"erro_{materia[:5].strip()}.png")
-                voltar_para_portal(page)
+                print(f"   > ERRO: {e}")
+                continue
 
-        # --- 5. SALVAR ---
+        # Gravar JSON
         with open("dados_faltas.json", "w", encoding="utf-8") as f:
             json.dump(dados_finais, f, indent=4, ensure_ascii=False)
             
-        print("\n--- Finalizado! Dados salvos. ---")
+        print("\n--- Finalizado com Sucesso! ---")
         browser.close()
 
 if __name__ == "__main__":
