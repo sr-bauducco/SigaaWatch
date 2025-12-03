@@ -25,7 +25,7 @@ O **SigaaWatch** é um bot desenvolvido em Python que acessa o portal do aluno, 
 
 1.  **Clone o repositório:**
     ```bash
-    git clone [https://github.com/sr-bauducco/SigaaWatch.git](https://github.com/sr-bauducco/SigaaWatch.git)
+    git clone https://github.com/sr-bauducco/SigaaWatch.git
     cd SigaaWatch
     ```
 
