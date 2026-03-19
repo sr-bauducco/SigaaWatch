@@ -2,77 +2,99 @@ import streamlit as st
 import json
 import os
 
-# Configuração da página para ocupar a tela toda e ter um título legal
 st.set_page_config(page_title="SigaaWatch Dashboard", page_icon="🎓", layout="wide")
 
-st.title("🎓 Meu Painel SigaaWatch")
-st.markdown("Monitoramento automatizado de faltas e frequência do SIGAA.")
-st.divider()
-
-# Função para carregar os dados salvos pelo robô
-def carregar_dados():
-    if not os.path.exists("dados_faltas.json"):
+# --- FUNÇÕES DE DADOS ---
+def carregar_dados(arquivo):
+    if not os.path.exists(arquivo):
         return None
-    with open("dados_faltas.json", "r", encoding="utf-8") as f:
+    with open(arquivo, "r", encoding="utf-8") as f:
         return json.load(f)
 
-dados = carregar_dados()
+def salvar_dados(arquivo, dados):
+    with open(arquivo, "w", encoding="utf-8") as f:
+        json.dump(dados, f, indent=4, ensure_ascii=False)
 
-if dados is None:
-    st.warning("⚠️ Nenhum dado encontrado. Rode o script `robo.py` primeiro para extrair as informações do SIGAA.")
+# Carrega os dados oficiais do robô
+dados_oficiais = carregar_dados("dados_faltas.json")
+
+# Carrega (ou cria) o seu controlo manual
+arquivo_estimativa = "estimativa_faltas.json"
+dados_estimativa = carregar_dados(arquivo_estimativa) or {}
+
+if dados_oficiais is None:
+    st.warning("⚠️ Rode o `robo.py` primeiro para procurar as disciplinas do SIGAA.")
 else:
-    # --- RESUMO GERAL ---
-    materias_ativas = [d for d in dados if d['status'] == 'Ativo']
-    materias_sem_chamada = [d for d in dados if d['status'] != 'Ativo']
+    # --- QUESTIONÁRIO DIÁRIO (BARRA LATERAL) ---
+    st.sidebar.header("📝 Diário de Bordo")
+    st.sidebar.markdown("Chegou da UnB? Registe as suas faltas de hoje:")
     
-    col1, col2, col3 = st.columns(3)
-    col1.metric("Total de Disciplinas", len(dados))
-    col2.metric("Com Chamada Ativa", len(materias_ativas))
-    col3.metric("Sem Chamada/Pendentes", len(materias_sem_chamada))
+    materias_nomes = [m['materia'] for m in dados_oficiais]
     
-    st.markdown("### 📊 Situação por Matéria")
-    
-    # --- GRID DE MATÉRIAS ---
-    # Cria colunas para colocar os "cards" das matérias lado a lado
+    # Formulário de registo manual
+    with st.sidebar.form("form_faltas"):
+        faltei_hoje = st.radio("Faltou a alguma aula hoje?", ["Não", "Sim"])
+        materias_faltadas = st.multiselect("Se sim, a quais?", materias_nomes)
+        
+        if st.form_submit_button("Guardar Registo"):
+            if faltei_hoje == "Sim" and materias_faltadas:
+                for mat in materias_faltadas:
+                    # Adiciona +1 à disciplina escolhida
+                    dados_estimativa[mat] = dados_estimativa.get(mat, 0) + 1
+                salvar_dados(arquivo_estimativa, dados_estimativa)
+                st.sidebar.success("Faltas registadas com sucesso!")
+            elif faltei_hoje == "Não":
+                st.sidebar.success("Boa! Mais um dia garantido.")
+
+    if st.sidebar.button("Zerar as minhas estimativas"):
+        salvar_dados(arquivo_estimativa, {})
+        st.rerun()
+
+    # --- PAINEL PRINCIPAL ---
+    st.title("🎓 O Meu Painel SigaaWatch")
+    st.markdown("Comparativo entre Faltas Oficiais (SIGAA) e Faltas Estimadas (Reais).")
+    st.divider()
+
+    st.markdown("### 📊 Situação por Disciplina")
     colunas = st.columns(3) 
     
-    for index, materia in enumerate(dados):
-        # Distribui os cards entre as 3 colunas
+    for index, materia in enumerate(dados_oficiais):
+        nome_mat = materia['materia']
+        faltas_oficiais = materia.get('faltas', 0)
+        
+        # Pega nas faltas manuais que registou (se não houver, é 0)
+        faltas_manuais = dados_estimativa.get(nome_mat, 0)
+        
+        # A falta REAL é a maior entre a oficial e a sua estimativa
+        faltas_reais = max(faltas_oficiais, faltas_manuais)
+        
         with colunas[index % 3]:
-            # Criamos um "Card" visual para cada matéria
             with st.container(border=True):
-                st.subheader(materia['materia'].title())
+                st.subheader(nome_mat.title())
                 
+                # Se a disciplina tiver % oficial calculada
                 if materia['status'] == 'Ativo':
-                    freq = materia['porcentagem']
-                    faltas = materia['faltas']
-                    
-                    # Lógica de Cores baseada na regra da UnB (mínimo de 75%)
-                    if freq >= 85:
-                        cor_texto = "🟢 Seguro"
-                        st.success(f"{cor_texto} (Frequência: {freq}%)")
-                    elif freq >= 75:
-                        cor_texto = "🟡 Atenção"
-                        st.warning(f"{cor_texto} (Frequência: {freq}%)")
+                    freq_oficial = materia['porcentagem']
+                    # Recalcula a % baseada na sua estimativa (aproximação simples)
+                    total_aulas = materia['total']
+                    if total_aulas > 0:
+                        freq_real = ((materia['presencas'] - (faltas_reais - faltas_oficiais)) / total_aulas) * 100
                     else:
-                        cor_texto = "🔴 Risco de Reprovação"
-                        st.error(f"{cor_texto} (Frequência: {freq}%)")
-                    
-                    # Barra de progresso visual
-                    st.progress(freq / 100)
-                    
-                    # Métricas de faltas e presenças
-                    m_col1, m_col2 = st.columns(2)
-                    m_col1.metric("Faltas", faltas)
-                    m_col2.metric("Presenças", materia['presencas'])
-                    
-                elif materia['status'] == 'Indisponível':
-                    st.info("ℹ️ **Status:** " + materia['mensagem'])
-                    st.markdown("*Nenhum dado numérico para exibir.*")
-                    
-                elif materia['status'] == 'Pendente':
-                    st.info("⏳ **Status:** " + materia['mensagem'])
-                    st.markdown("*Acompanhe nas próximas semanas.*")
+                        freq_real = freq_oficial
 
-    st.divider()
-    st.caption("Dados extraídos automaticamente. Verifique sempre o SIGAA oficial em caso de dúvidas.")
+                    # Cores baseadas na estimativa REAL
+                    if freq_real >= 85: 
+                        st.success(f"🟢 Seguro (Freq. Real: {freq_real:.1f}%)")
+                    elif freq_real >= 75: 
+                        st.warning(f"🟡 Atenção (Freq. Real: {freq_real:.1f}%)")
+                    else: 
+                        st.error(f"🔴 Risco! (Freq. Real: {freq_real:.1f}%)")
+                else:
+                    st.info(f"ℹ️ {materia['mensagem']}")
+
+                # Métricas lado a lado
+                m_col1, m_col2 = st.columns(2)
+                m_col1.metric("Faltas SIGAA", faltas_oficiais)
+                # Mostra a sua estimativa (destacada se for maior que a do SIGAA)
+                delta = faltas_manuais - faltas_oficiais if faltas_manuais > faltas_oficiais else None
+                m_col2.metric("A Minha Estimativa", faltas_manuais, delta=delta, delta_color="inverse")
