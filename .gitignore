@@ -8,17 +8,12 @@ __pycache__/
 screenshots/
 test-results/
 *.log
-*.sqlite3
-dados_faltas.json
 .vscode/
 .idea/
 .venv/
 .env
 __pycache__/
-dados_faltas.json
 *.png
 .venv/
 .env
 __pycache__/
-dados_faltas.json
-estimativa_faltas.json
