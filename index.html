@@ -17,57 +17,70 @@
     <script>
         async function carregarFaltas() {
             try {
-                // Busca o arquivo JSON com um timestamp para evitar cache de dados velhos
                 const response = await fetch('dados_faltas.json?t=' + new Date().getTime());
-                if (!response.ok) throw new Error('Arquivo de faltas não encontrado.');
+                if (!response.ok) throw new Error('Arquivo não encontrado.');
                 
                 const dados = await response.json();
                 const container = document.getElementById('materias-container');
-                container.innerHTML = ''; // Limpa o container antes de adicionar
+                container.innerHTML = ''; 
                 
                 document.getElementById('status').innerText = 'Sincronizado via Oracle Cloud ☁️';
 
-                // CORREÇÃO AQUI: Iterando corretamente sobre cada matéria e seus dados
-                for (const [materiaNome, info] of Object.entries(dados)) {
-                    
-                    // Converte os dados para números garantindo que não haja erro
+                // Como é uma lista [ { ... }, { ... } ], usamos o "for...of" diretamente nos dados
+                for (const info of dados) {
+                    const materiaNome = info.materia;
                     const faltas = parseInt(info.faltas) || 0;
-                    const limite = parseInt(info.limite) || 1; // Evita divisão por zero
-                    const porcentagem = (faltas / limite) * 100;
-                    
-                    // Define a cor da barra com base no perigo de reprovação
-                    let corBarra = 'bg-emerald-500'; // Seguro (Verde)
-                    if (porcentagem > 50) corBarra = 'bg-amber-400'; // Atenção (Amarelo)
-                    if (porcentagem > 80) corBarra = 'bg-red-500'; // Perigo (Vermelho)
+                    const totalAulas = parseInt(info.total) || 0;
+                    const status = info.status;
+                    const mensagem = info.mensagem;
 
-                    // Cria o HTML do card, agora usando materiaNome corretamente
+                    let conteudoCard = '';
+
+                    // Verifica se a matéria ainda não tem controle de faltas
+                    if (status === 'Indisponível' || totalAulas === 0) {
+                        conteudoCard = `
+                            <div class="flex justify-between text-sm text-gray-500 mb-2">
+                                <span>Status: <strong class="text-gray-700 font-normal italic">${mensagem}</strong></span>
+                            </div>
+                        `;
+                    } else {
+                        // Lógica de Faltas (Limite de 25% do total de aulas)
+                        const limiteFaltas = Math.floor(totalAulas * 0.25);
+                        // Calcula a porcentagem consumida do seu limite de faltas
+                        const consumoFaltas = limiteFaltas > 0 ? (faltas / limiteFaltas) * 100 : 0;
+                        
+                        let corBarra = 'bg-emerald-500'; // Verde
+                        if (consumoFaltas > 50) corBarra = 'bg-amber-400'; // Atenção
+                        if (consumoFaltas > 80) corBarra = 'bg-red-500'; // Perigo!
+
+                        conteudoCard = `
+                            <div class="flex justify-between text-sm text-gray-600 mb-2">
+                                <span>Faltas: <strong class="text-gray-900">${faltas}</strong> <span class="text-xs">/ ${limiteFaltas} permitidas</span></span>
+                            </div>
+                            <div class="flex justify-between text-xs text-gray-500 mb-1">
+                                <span>Aulas Totais: ${totalAulas}</span>
+                                <span>Frequência Atual: ${info.porcentagem}%</span>
+                            </div>
+                            <div class="w-full bg-gray-100 rounded-full h-2.5">
+                                <div class="${corBarra} h-2.5 rounded-full transition-all duration-500" style="width: ${Math.min(consumoFaltas, 100)}%"></div>
+                            </div>
+                        `;
+                    }
+
                     const card = `
                         <div class="bg-white p-5 rounded-2xl shadow-sm border border-gray-200">
-                            <h2 class="text-md font-bold text-gray-800 truncate mb-1" title="${materiaNome}">
-                                ${materiaNome}
-                            </h2>
-                            
-                            <div class="flex justify-between text-sm text-gray-600 mb-2">
-                                <span>Faltas: <strong class="text-gray-900">${faltas}</strong></span>
-                                <span>Limite: <strong class="text-gray-900">${limite}</strong></span>
-                                <span class="text-xs font-mono text-gray-400">${Math.round(porcentagem)}%</span>
-                            </div>
-                            
-                            <div class="w-full bg-gray-100 rounded-full h-2.5">
-                                <div class="${corBarra} h-2.5 rounded-full transition-all duration-500" style="width: ${Math.min(porcentagem, 100)}%"></div>
-                            </div>
+                            <h2 class="text-md font-bold text-gray-800 truncate mb-2" title="${materiaNome}">${materiaNome}</h2>
+                            ${conteudoCard}
                         </div>
                     `;
                     container.innerHTML += card;
                 }
             } catch (error) {
-                // Se der erro, avisa o usuário
                 document.getElementById('status').innerText = '⚠️ Erro ao carregar os dados de faltas.';
-                console.error('Erro detalhado:', error);
+                console.error(error);
             }
         }
 
-        // Executa a função assim que a página abre
         carregarFaltas();
     </script>
 </body>
