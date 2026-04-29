@@ -18,15 +18,6 @@
         "porcentagem": 100.0
     },
     {
-        "materia": "SINAIS E SISTEMAS EM TEMPO CONTÍNUO",
-        "status": "Indisponível",
-        "mensagem": "Não fazem chamada",
-        "faltas": 0,
-        "presencas": 0,
-        "total": 0,
-        "porcentagem": 100.0
-    },
-    {
         "materia": "SISTEMAS DIGITAIS",
         "status": "Indisponível",
         "mensagem": "Não fazem chamada",
