@@ -3,7 +3,7 @@
         "materia": "CALCULO NUMERICO",
         "status": "Ativo",
         "mensagem": "Chamada ativa",
-        "faltas": 0,
+        "faltas": 10,
         "presencas": 0,
         "total": 0,
         "porcentagem": 100.0
