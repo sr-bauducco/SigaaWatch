@@ -37,9 +37,9 @@
     },
     {
         "materia": "SISTEMAS DIGITAIS",
-        "status": "Indisponível",
-        "mensagem": "Não fazem chamada",
-        "faltas": 0,
+        "status": "Ativo",
+        "mensagem": "Chamada ativa",
+        "faltas": 2,
         "presencas": 0,
         "total": 0,
         "porcentagem": 100.0
