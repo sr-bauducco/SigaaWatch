@@ -1,8 +1,8 @@
 [
     {
         "materia": "FISICA 2 EXPERIMENTAL",
-        "status": "Indisponível",
-        "mensagem": "Não fazem chamada",
+        "status": "Ativo",
+        "mensagem": "Chamada ativa",
         "faltas": 0,
         "presencas": 0,
         "total": 0,
