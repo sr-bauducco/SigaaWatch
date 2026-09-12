@@ -9,15 +9,6 @@
         "porcentagem": 100.0
     },
     {
-        "materia": "INTRODUÇÃO AOS CIRCUITOS ELÉTRICOS",
-        "status": "Ativo",
-        "mensagem": "Chamada ativa",
-        "faltas": 2,
-        "presencas": 0,
-        "total": 0,
-        "porcentagem": 100.0
-    },
-    {
         "materia": "INTRODUÇÃO A SISTEMAS MULTIAGENTE",
         "status": "Ativo",
         "mensagem": "Chamada ativa",
